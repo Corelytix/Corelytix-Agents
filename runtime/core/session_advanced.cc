@@ -421,4 +421,17 @@ SessionAdvanced::CloneAsyncLocked(
                                               session_state_, last_task_ids_));
 }
 
+SessionAdvanced::~SessionAdvanced() {
+  WaitUntilDone().IgnoreError();
+  auto execution_manager_lock = execution_manager_.lock();
+  if (execution_manager_lock == nullptr) {
+    ABSL_LOG(ERROR) << "Execution manager is not available.";
+    return;
+  }
+  auto status = execution_manager_lock->ReleaseSession(session_id_);
+  if (!status.ok()) {
+    ABSL_LOG(ERROR) << "Error occurred when releasing session: " << status;
+  }
+};
+
 }  // namespace litert::lm

@@ -83,9 +83,9 @@ class SessionAdvanced : public Engine::Session {
       Tokenizer* absl_nonnull tokenizer, const SessionConfig& session_config,
       std::optional<BenchmarkInfo> benchmark_info);
 
-  // TODO b/409401231 - Call execution manager's release session instead.
-  // Wait until all tasks are done before destroying the session.
-  ~SessionAdvanced() override { WaitUntilDone().IgnoreError(); };
+  // Destroys the SessionAdvanced object. It will wait for all tasks to be
+  // done and release the session from the execution manager.
+  ~SessionAdvanced() override;
 
   absl::StatusOr<Responses> GenerateContent(
       const std::vector<InputData>& contents) override;

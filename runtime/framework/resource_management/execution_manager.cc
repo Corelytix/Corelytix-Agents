@@ -120,6 +120,16 @@ absl::StatusOr<SessionId> ExecutionManager::RegisterNewSession(
   return session_id;
 }
 
+absl::Status ExecutionManager::ReleaseSession(SessionId session_id) {
+  absl::MutexLock lock(session_and_task_lookup_mutex_);
+  if (!session_lookup_.contains(session_id)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Session ", session_id, " not found in session list."));
+  }
+  session_lookup_.erase(session_id);
+  return absl::OkStatus();
+}
+
 absl::Status ExecutionManager::CancelAllTasksInSession(SessionId session_id) {
   absl::MutexLock lock(session_and_task_lookup_mutex_);
   if (!session_lookup_.contains(session_id)) {
