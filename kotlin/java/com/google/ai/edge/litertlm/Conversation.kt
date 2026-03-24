@@ -466,15 +466,17 @@ class Conversation(
         }
       }
 
+      val channels = mutableMapOf<String, String>()
+      if (messageJsonObject.has("channels")) {
+        val channelsJsonObject = messageJsonObject.getAsJsonObject("channels")
+        for (entry in channelsJsonObject.entrySet()) {
+          channels[entry.key] = entry.value.asString
+        }
+      }
+
       // Note: consider to parse the "role" from the messageJsonObject.
       // It seems that models can return "assistant" or "model".
-      return if (toolCalls.isNotEmpty()) {
-        val text = if (contents.isNotEmpty()) (contents.first() as? Content.Text)?.text else null
-        val contentsArg = if (text != null) Contents.of(text) else Contents.empty()
-        Message.model(contentsArg, toolCalls)
-      } else {
-        Message.model(Contents.of(contents))
-      }
+      return Message.model(Contents.of(contents), toolCalls, channels)
     }
   }
 }
