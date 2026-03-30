@@ -136,7 +136,8 @@ def convert(source, model_id=None, prefer_current_venv=False, extra_args=()):
 
   click.echo(
       click.style(
-          f"You can now run the model with 'run {effective_model_id}'",
+          "You can now run the model with 'litert-lm run"
+          f" {effective_model_id}'",
           fg="green",
       )
   )
@@ -178,16 +179,129 @@ def list_models():
     )
 
 
-@cli.command(name="import")
-@click.argument("source")
-@click.argument("ref")
-def import_model(source, ref):
-  """Imports a model from a local path."""
-  if not os.path.exists(source):
-    click.echo(click.style(f"Source file not found: {source}", fg="red"))
-    return
+def _download_from_huggingface(repo_id, filename, token):
+  """Downloads a file from HuggingFace Hub.
 
-  model_obj = model.Model.from_model_id(ref)
+  Args:
+    repo_id: The HuggingFace repository ID.
+    filename: The filename to download.
+    token: The HuggingFace API token.
+
+  Returns:
+    The local path to the downloaded file, or None if download failed.
+  """
+  try:
+    # pylint: disable=g-import-not-at-top
+    from huggingface_hub import get_token
+    from huggingface_hub import hf_hub_download
+  except ImportError:
+    click.echo(
+        click.style(
+            "Error: huggingface_hub is not installed. Please install it to"
+            " download from HuggingFace.",
+            fg="red",
+        )
+    )
+    return None
+
+  effective_token = token or get_token()
+
+  click.echo(f"Downloading {filename} from {repo_id}...")
+  try:
+    return hf_hub_download(
+        repo_id=repo_id,
+        filename=filename,
+        token=effective_token,
+    )
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    click.echo(
+        click.style(f"Error downloading from HuggingFace: {e}", fg="red")
+    )
+    if not effective_token:
+      click.echo(
+          click.style(
+              "HuggingFace token not found. If this is a private or gated"
+              " repository, you can provide the token via the"
+              " --huggingface-token option, setting the"
+              " HUGGING_FACE_HUB_TOKEN environment variable, or by running"
+              " 'hf auth login'.",
+              fg="yellow",
+          )
+      )
+    return None
+
+
+def huggingface_options(f):
+  """Decorator for HuggingFace-related options."""
+  f = click.option(
+      "--huggingface-token",
+      default=None,
+      help=(
+          "The HuggingFace API token to use when downloading from a access"
+          " gated HuggingFace repository. This can also be set via the"
+          " HUGGING_FACE_HUB_TOKEN or HF_TOKEN environment variables, or by"
+          " running `hf auth login`."
+      ),
+  )(f)
+  f = click.option(
+      "--from-huggingface-repo",
+      default=None,
+      help="The HuggingFace repository ID to download the model from, if set.",
+  )(f)
+  return f
+
+
+@cli.command(
+    name="import",
+    help="""Imports a model from a local path or HuggingFace hub.
+
+  MODEL_FILE: The local path to the model file, or the path in the HuggingFace
+  repo if --from-huggingface-repo is set.
+  MODEL_REF: The ID to store the model as. Defaults to the filename of
+  MODEL_FILE.
+
+  \b
+  Examples:
+    # Import from a local path
+    litert-lm import ./model.litertlm my-model
+
+    # Import from a HuggingFace repository
+    litert-lm import --from-huggingface-repo org/repo model.litertlm my-model
+
+    # Import and use the default model ID
+    litert-lm import ./model.litertlm""",
+)
+@huggingface_options
+@click.argument("model_file")
+@click.argument("model_ref", required=False)
+def import_model(
+    from_huggingface_repo, huggingface_token, model_file, model_ref
+):
+  """Imports a model from a local path or HuggingFace hub.
+
+  Args:
+    from_huggingface_repo: The HuggingFace repository ID.
+    huggingface_token: HuggingFace API token.
+    model_file: The path in the repo (if from-huggingface-repo is set) or local
+      path.
+    model_ref: The reference ID to store the model as. Defaults to the filename
+      of MODEL_FILE.
+  """
+  effective_model_ref = model_ref or os.path.basename(model_file)
+
+  if from_huggingface_repo:
+    source = _download_from_huggingface(
+        from_huggingface_repo, model_file, huggingface_token
+    )
+    if not source:
+      return
+  else:
+    source = model_file
+    if not os.path.exists(source):
+      click.echo(click.style(f"Source file not found: {source}", fg="red"))
+      return
+
+  model_obj = model.Model.from_model_id(effective_model_ref)
   model_path = model_obj.model_path
   model_dir = os.path.dirname(model_path)
 
@@ -196,6 +310,13 @@ def import_model(source, ref):
   shutil.copy(source, model_path)
   click.echo(
       click.style(f"Successfully imported model to {model_path}", fg="green")
+  )
+  click.echo(
+      click.style(
+          "You can now run the model with 'litert-lm run"
+          f" {effective_model_ref}'",
+          fg="green",
+      )
   )
 
 
@@ -277,6 +398,7 @@ def parse_speculative_decoding(unused_ctx, unused_param, value):
 
 def common_inference_options(f):
   """Decorator for common options shared across commands."""
+  f = huggingface_options(f)
   f = click.option(
       "--verbose",
       is_flag=True,
@@ -305,7 +427,20 @@ Speculative decoding mode ("auto", "true", "false").
   return f
 
 
-@cli.command(help="Benchmarks a LiteRT-LM model.")
+@cli.command(
+    help="""Benchmarks a LiteRT-LM model.
+
+  \b
+  Examples:
+    # Benchmark using a model ID from 'litert-lm list'
+    litert-lm benchmark my-model
+
+    # Benchmark using a local path
+    litert-lm benchmark ./model.litertlm
+
+    # Benchmark directly from a HuggingFace repository
+    litert-lm benchmark --from-huggingface-repo org/repo model.litertlm""",
+)
 @click.argument("model_reference")
 @click.option(
     "-p",
@@ -330,12 +465,15 @@ def benchmark(
     android: bool = False,
     enable_speculative_decoding: bool | None = None,
     verbose: bool = False,
+    from_huggingface_repo: str | None = None,
+    huggingface_token: str | None = None,
 ):
   """Benchmarks a LiteRT-LM model.
 
   Args:
     model_reference: A relative or absolute path to a .litertlm model file, or a
-      model ID from `litert-lm list`.
+      model ID from `litert-lm list`. If from-huggingface-repo is set, this is
+      the filename in the repository.
     prefill_tokens: The number of tokens to prefill.
     decode_tokens: The number of tokens to decode.
     backend: The backend to use (cpu or gpu).
@@ -343,11 +481,22 @@ def benchmark(
     enable_speculative_decoding: Speculative decoding mode (True, False, or None
       for auto).
     verbose: Whether to enable verbose logging.
+    from_huggingface_repo: The HuggingFace repository ID.
+    huggingface_token: The HuggingFace API token.
   """
   if verbose:
     litert_lm.set_min_log_severity(litert_lm.LogSeverity.VERBOSE)
 
-  model_obj = model.Model.from_model_reference(model_reference)
+  if from_huggingface_repo:
+    model_path = _download_from_huggingface(
+        from_huggingface_repo, model_reference, huggingface_token
+    )
+    if not model_path:
+      return
+    model_obj = model.Model.from_model_path(model_path)
+  else:
+    model_obj = model.Model.from_model_reference(model_reference)
+
   model_obj.benchmark(
       prefill_tokens=prefill_tokens,
       decode_tokens=decode_tokens,
@@ -358,24 +507,18 @@ def benchmark(
 
 
 @cli.command(
-    help=(
-        "\b\n"
-        "Runs a LiteRT-LM model interactively or with a single prompt.\n"
-        "\n"
-        "\b\n"
-        "Example preset file:\n"
-        "  ```py\n"
-        "  def add_numbers(a: float, b: float) -> float:\n"
-        "    '''Adds two numbers.'''\n"
-        "    return a + b\n"
-        "\n"
-        "\b\n"
-        "  # Provides the 'system instruction', 'tools', and 'extra_context'\n"
-        "  system_instruction = 'You are a helpful assistant.'\n"
-        "  tools = [add_numbers]\n"
-        "  extra_context = {'key': 'value'}\n"
-        "  ```"
-    )
+    help="""Runs a LiteRT-LM model interactively or with a single prompt.
+
+  \b
+  Examples:
+    # Run interactively using a model ID from 'litert-lm list'
+    litert-lm run my-model
+
+    # Run with a single prompt using a local path
+    litert-lm run ./model.litertlm --prompt "Hi there!"
+
+    # Run directly from a HuggingFace repository
+    litert-lm run --from-huggingface-repo org/repo model.litertlm""",
 )
 @click.argument("model_reference")
 @click.option(
@@ -399,12 +542,15 @@ def run(
     android=False,
     enable_speculative_decoding=None,
     verbose=False,
+    from_huggingface_repo=None,
+    huggingface_token=None,
 ):
   r"""Runs a LiteRT-LM model interactively or with a single prompt.
 
   Args:
     model_reference: A relative or absolute path to a .litertlm model file, or a
-      model ID from `litert-lm list`.
+      model ID from `litert-lm list`. If from-huggingface-repo is set, this is
+      the filename in the repository.
     prompt: A single prompt to run once and exit.
     preset: Path to a Python file containing tool functions and system
       instructions.
@@ -413,33 +559,44 @@ def run(
     enable_speculative_decoding: Speculative decoding mode (True, False, or None
       for auto).
     verbose: Whether to enable verbose logging.
+    from_huggingface_repo: The HuggingFace repository ID.
+    huggingface_token: The HuggingFace API token.
   """
   if verbose:
     litert_lm.set_min_log_severity(litert_lm.LogSeverity.VERBOSE)
 
-  model_obj = model.Model.from_model_reference(model_reference)
-  if not model_obj.exists():
-    # Only auto-convert if it looks like a HuggingFace repo ID (account/repo)
-    # and is not a local path.
-    parts = model_reference.split("/")
-    if len(parts) == 2 and all(parts) and not os.path.exists(model_reference):
-      click.echo(
-          click.style(
-              f"Model '{model_reference}' not found. Attempting to convert"
-              f" from https://huggingface.co/{model_reference} ...",
-              fg="yellow",
-          )
-      )
-      convert.callback(source=model_reference)
-      model_obj = model.Model.from_model_reference(model_reference)
-
-    if not model_obj.exists():
-      click.echo(
-          click.style(
-              f"Failed to find or convert model '{model_reference}'.", fg="red"
-          )
-      )
+  if from_huggingface_repo:
+    model_path = _download_from_huggingface(
+        from_huggingface_repo, model_reference, huggingface_token
+    )
+    if not model_path:
       return
+    model_obj = model.Model.from_model_path(model_path)
+  else:
+    model_obj = model.Model.from_model_reference(model_reference)
+    if not model_obj.exists():
+      # Only auto-convert if it looks like a HuggingFace repo ID (account/repo)
+      # and is not a local path.
+      parts = model_reference.split("/")
+      if len(parts) == 2 and all(parts) and not os.path.exists(model_reference):
+        click.echo(
+            click.style(
+                f"Model '{model_reference}' not found. Attempting to convert"
+                f" from https://huggingface.co/{model_reference} ...",
+                fg="yellow",
+            )
+        )
+        convert.callback(source=model_reference)
+        model_obj = model.Model.from_model_reference(model_reference)
+
+      if not model_obj.exists():
+        click.echo(
+            click.style(
+                f"Failed to find or convert model '{model_reference}'.",
+                fg="red",
+            )
+        )
+        return
 
   model_obj.run_interactive(
       prompt=prompt,

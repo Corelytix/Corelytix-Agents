@@ -100,6 +100,7 @@ pytype_strict_binary(
         ":venv_manager",
         "//python/litert_lm",
         requirement("click"),
+        requirement("huggingface_hub"),
     ],
     imports = [".."],
 )
@@ -143,6 +144,7 @@ py_wheel(
         "//conditions:default": ["litert-lm-api"],
     }) + [
         "click",
+        "huggingface_hub",
     ],
     deps = [":package"],
 )
