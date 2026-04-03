@@ -1,0 +1,23 @@
+{
+  "experimentId": "exp-001",
+  "createdAt": "2025-09-15T12:00:00.000Z",
+  "description": "Volatility analysis for SOL token over short-term window",
+  "parameters": {
+    "tokenSymbol": "SOL",
+    "analysisWindowMinutes": 60,
+    "volatilityThreshold": 0.05,
+    "liquidityThresholdUsd": 100000,
+    "minVolumeUsd": 50000
+  },
+  "status": "draft",
+  "results": {
+    "volatilityScore": null,
+    "avgPriceUsd": null,
+    "maxDrawdown": null,
+    "alerts": []
+  },
+  "notes": "",
+  "executedAt": null,
+  "executedBy": null,
+  "tags": ["volatility", "solana", "risk-check"]
+}

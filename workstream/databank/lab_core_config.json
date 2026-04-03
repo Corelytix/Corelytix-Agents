@@ -1,0 +1,32 @@
+{
+  "projectName": "lab_core",
+  "environment": "development",
+  "version": "1.0.0",
+
+  "logging": {
+    "level": "debug",
+    "destinations": ["console", "file"],
+    "filePath": "./logs/lab_core.log",
+    "maxSizeMb": 10,
+    "maxFiles": 5,
+    "jsonFormat": true
+  },
+
+  "features": {
+    "enableDiagnostics": true,
+    "enableRealTimeAlerts": false,
+    "enableCaching": true,
+    "enableMetrics": true
+  },
+
+  "security": {
+    "requireApiKey": true,
+    "rateLimitPerMinute": 120
+  },
+
+  "meta": {
+    "maintainer": "team@example.com",
+    "createdAt": "2025-09-15T12:00:00.000Z",
+    "tags": ["dev", "liquidity", "analytics"]
+  }
+}
